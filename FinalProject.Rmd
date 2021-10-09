@@ -1,0 +1,1020 @@
+---
+title: "COVID-19 Final Project"
+author: "By Raghad, Amar, Majd"
+date: "20/6/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Part 1: Exploring the Covid concern dataset - `civiqs_poll.csv`. 
+
+First Let's import the relevant libraries
+```{r, message=FALSE, error=FALSE, results=FALSE, warning=FALSE, comment=FALSE}
+
+library(tidyverse)
+
+library(lubridate)
+
+library(scales)
+
+library(tidymodels)
+
+library(ggthemes)
+
+library(tidyr)
+```
+
+
+Then Let's import the data set and get to know it, we'll do that by implementing the steps provided in the "Doing Data Science" presentation. 
+Before formulating our questions let's read into our data and understand its content.
+
+```{r, message=FALSE}
+concern<-read_csv("data/civiqs_poll.csv")
+
+glimpse(concern)
+
+head(concern)
+
+tail(concern)
+
+```
+
+Looks like our data needs a bit of pre-processing.
+
+As we can see, there's `date` column of type 'character', for it to be useful in the analysis we'll convert it to 'date' with the help of the `lubridate` package.
+
+```{r}
+#Note from observing the data, the date given is in the format month-day-year
+concern<-concern%>%mutate(date=date%>%mdy())
+glimpse(concern)
+
+```
+
+```{r}
+#saveRDS(concern, file = "clean_data/concern.rds")
+```
+
+Now we're good to continue, one more step before formulating our questions is the validation process, we validated the data with the provided source, the [Civiqs Polls Website](https://civiqs.com/results/coronavirus_concern?annotations=true&uncertainty=true&zoomIn=true&net=true), by checking the website and playing with the data. The website gave us essential information about the data, which will help us form our questions.
+Now we are sure and have a better understanding of it.
+
+As stated in the source file, the dataset is the results of a poll about the Coronavirus Outbreak concern among the democratic party voters and the republican party voters in the US.
+
+Knowing that this is our data, we will to use it to find out the following:
+
+-How did each party voters react? were there party voters more concerned than the other party voters ? 
+
+Now let's make the visualizations that help us answer these questions and see how individuals from both parties responded:
+```{r}
+#Plotting
+concern_plot<- ggplot(concern, aes(x=date)) + 
+  
+  geom_line(aes(y = dem, color=dem<0), size=0.7)+ 
+  
+  geom_point(aes(y = dem, color=dem<0), size=2)+
+  
+  geom_line(aes(y = rep, color=rep<=0), size=0.7) +
+  
+  geom_point(aes(y = rep, color=rep<=0), size=2)+ 
+  
+  scale_x_date(date_breaks = "1 week")+
+  
+  scale_y_continuous(labels= function(x) paste0(x, "%"),limits=c(-60, 90),breaks = seq(from = -60, to = 90, by = 15))+
+  
+  theme_minimal()+ 
+  
+  annotate("text", x=as.Date("2020-02-28"), y = -45, label = "Republican", size=3.5)+
+  
+  annotate("text", x=as.Date("2020-02-28"), y = 45, label = "Democratic", size=3.5)+
+  
+  scale_color_manual(labels=c("Concerned", "Unconcerned"), values =c("red3", "dodgerblue3"))+
+  
+  labs(title="How Concerned Are You About A Coronavirus Outbreak In Your Local Area?", subtitle = "Responses By Registered Voters in the US", x="Date In Format Y-M-D", y="", color="" )
+
+concern_plot
+
+```
+
+It is very clear that there's a gap in the responses between the two parties, democrats are obviously more concerned than the republicans, however, the unconcern among republicans is gradually reduced as time passes, and we note that starting from a certain date the unconcern among republicans is significantly decreasing, along with it the concern among democrats increases. To further understand this phenomenon and the behavior of the lines we'll add events to the plot.
+
+```{r}
+
+#Creating events dataframe to help us add them to the plot
+events_df <- data.frame(matrix(ncol = 2, nrow = 0))
+
+#Adding 2 events to the df
+events_df <-rbind(events_df, c("2020-03-21", "WH projects\n100-240k\ndeaths"))
+events_df <-rbind(events_df, c("2020-03-13", "National\nemergency\ndeclared"))
+
+#Naming the columns 
+names(events_df) <- c("date", "event")
+
+#Converting the date column from `character` to `date`
+events_df<-events_df%>%mutate(date=date%>%ymd())
+events_df 
+
+#Adding the events to the previous graph - concern_plot
+concern_plot + 
+
+   geom_segment(data = events_df, aes(x = date, y = 90, xend = date, yend =-60), color = "grey") +
+  
+  geom_text(data = events_df , aes(x = date, y =  25, label = event), color = "black", size=2.4)
+
+```
+
+The sudden rise happened around a crucial event, after this event-declaring national emergency, both of the lines are in constant rise, both parties were becoming more and more concerned.
+But despite the rise in concern of the republican party it is still much less than the concern among the democratic party.
+Let's explore the Cases dataset, then try to find more useful information and relationships between the two datasets.
+
+## Exploring the Covid cases dataset 
+
+After Exploring the Covid Concern dataset, now we'll explore the Covid Cases, its data is taken from [Wikipedia](https://en.wikipedia.org/wiki/Template:COVID-19_pandemic_data/United_States_medical_cases), so first we have to scrape it, clean it and tidy it, the entire process of scraping, splitting, pivoting, cleaning, tidying the data is in the R script file in this Project: 
+
+
+For a more comfortable analysis, we split the scraped_data into two dataframes, cases1 and cases2, the explanation on how we did this is included in the R script file as code comments.
+Now, we'll load the clean data and explore it:
+
+```{r}
+cases1 <- readRDS("~/Project/clean_data/cases1.rds")
+cases2 <- readRDS("~/Project/clean_data/cases2.rds")
+
+```
+
+First look:
+
+```{r}
+
+
+glimpse(cases1)
+
+#This is the second split of the scraped_data df, which contains summery of daily cases in all the states and regions  
+glimpse(cases2)
+
+
+```
+
+Let's check out some simple visualizations first to get a larger  idea on the data and the numbers
+
+```{r}
+#Simple Plot 1
+#For our analysis we're interested in 2020 data only
+smpl_plots<-cases2%>%filter(between(Date,ymd("2020-01-21"),ymd("2020-12-31")))
+
+
+#Plotting
+ggplot(smpl_plots,aes(Date,Total_Active))+
+  
+  geom_line(color="hotpink3", size=2)+ 
+  
+  labs(title="Total Active Covid Cases In The US", subtitle = "During 2020", x="Month", y="Total Active Cases")+
+  
+   scale_y_continuous(labels= scales::comma)+ 
+  
+   scale_x_date(date_breaks = "1 month", date_labels = "%m")+
+  
+  theme_minimal()
+
+```
+
+```{r}
+
+#Simple Plot 2
+#For our analysis we're interested in 2020 data only
+
+#Plotting
+ggplot(smpl_plots,aes(Date,Daily_Deaths))+
+  
+  geom_line(color="skyblue", size=0.75)+ 
+  
+  labs(title="Daily Covid Death Cases In The US", subtitle = "During 2020", x="Month", y="Death Cases")+
+  
+   scale_y_continuous(labels= scales::comma)+ 
+  
+   scale_x_date(date_breaks = "1 month", date_labels = "%m")+
+  
+  theme_minimal()
+
+```
+
+```{r}
+
+#Simple Plot 3
+#For our analysis we're interested in 2020 data only
+
+#Plotting
+ggplot(smpl_plots,aes(Date,Daily_Confirmed))+
+  
+  geom_line(color="forestgreen", size=0.75)+ 
+  
+  labs(title="Daily Confirmed Cases In The US", subtitle = "During 2020", x="Month", y="Confirmed Cases")+
+  
+   scale_y_continuous(labels= scales::comma)+ 
+  
+   scale_x_date(date_breaks = "1 month", date_labels = "%m")+
+  
+  theme_minimal()
+
+```
+
+Now we Have an idea on the numbers we're dealing with.
+
+Let's check out the cases in the year 2020 by each month in every region, and see the numbers in each region, we'll exclude the Territories of the US because it's irrelevant in our analysis, also it would be more convenient here to normalize the data, meaning, we will divide the number of cases by the population in each region, so we can compare the situation between all regions, the 2020 population data we'll take from [here](https://en.wikipedia.org/wiki/List_of_states_and_territories_of_the_United_States_by_population).
+
+```{r, message=FALSE, warning=FALSE}
+#Creating a df for the plotting
+#Counting the cases by the month and region
+monthly_cases<-cases1%>%
+  
+  filter(between(Date,ymd("2020-01-21"),ymd("2020-12-30")), Region!="Territories")%>%
+  
+  group_by(Month=month(Date), Region)%>%
+  
+  summarise(Total_cases=sum(Cases))
+
+#Check the result
+head(monthly_cases)
+
+#Creating a df to help us in the plot
+#Population in every region 
+Region<-c("West", "South","Northeast", "Midwest" )
+
+Population_2020<-c(78588572, 126266107, 57609148, 68985454)
+
+population<-data.frame(Region, Population_2020)
+
+#Joining the helping dfs for the plot
+pop_cases<-left_join(monthly_cases, population)
+
+#Check the result
+head(pop_cases)
+
+#Adding a column for the portion of cases in the population
+pop_cases<-pop_cases%>%mutate(Portion=Total_cases/Population_2020)
+head(pop_cases)
+
+
+#Check the result
+head(pop_cases)
+
+#Plotting
+ggplot(data=pop_cases, aes(x=factor(Month), y=Portion))+
+  
+  geom_histogram(stat="identity", color="black", fill="orchid4")+
+  
+  scale_y_continuous(labels= scales::comma)+
+  
+  scale_x_discrete()+
+  
+  facet_wrap(~Region, nrow(3), ncol(3))+
+  
+  labs(title="Portion Of Covid Cases ", 
+       subtitle = "From Every US Region Population During 2020", y="Portion", x="Month")+
+  
+   theme_bw()+
+  
+   theme(strip.background =element_rect(fill="lavender"))+
+  
+   theme(strip.text = element_text(colour = 'black'))+
+  
+   theme_hc()+
+  
+   scale_colour_hc()
+```
+
+We note that specifically during the last months of 2020, the Midwest region had a higher portion of cases than the other regions,then the West comes after it.
+The South as it looks had low values than all the other regions.
+
+let's try to find connection between the concern dataset and the cases dataset, for us to do so, we need additional data, because the concern dataset consists of only 2 columns and they're in the realm of American politics, so we need to bring some political data to the cases dataframe in order to be able to explore them together.
+ 
+For this context the most appropriate data to add is the red/republican and blue/democratic states, we'll use the help of such df from part 3, elaborate explanations are available in part 3 about this df.
+
+Let's check the following, do each party's cases have a connection with how much it is worried?
+
+Is It really that Republicans are less concerned and have more cases?
+Is It really that Democrats are more concerned and have less cases?
+
+Can the cases dataset give us additional explanations to the rise in concern for both parties?
+
+Let's do some preprocessing and preparing in order to answer these questions and plot some visualizations to help us answer
+```{r}
+
+Election1 <- readRDS("~/Project/clean_data/Election1.rds")
+#Let's join the two datasets
+party_cases<-inner_join(cases1, Election1)
+
+#Now let's group the states by the winnig party
+#for us to be able to find a connection with the consern dataset
+glimpse(party_cases)
+
+prty_date_cases<-party_cases%>%group_by(Date, WINNER)%>%summarise(Cases=sum(Cases))
+
+
+#check the result
+head(prty_date_cases)
+
+#Trying to fix stubborn error that comes up in the joining
+concern<-concern%>%mutate(Date_numeric=as.numeric(as.Date(concern$date)))
+                    
+#prty_date_cases<-prty_date_cases%>%mutate(Date_numeric=as.numeric(prty_date_cases$Date))                   
+
+#Now that we have the relevant data we can combine it with the concern dataset
+
+#Weired stubborn error and the internet wasnt helpful :(
+#concern_cases<-inner_join(prty_date_cases, concern, by=c("Date_numeric", "Date_numeric"))
+
+#Check the result
+#head(concern_cases)
+
+#data for seperate plots for each party
+#dem_party<-concern_cases%>%filter(WINNER=="Clinton")
+#head(dem_party)
+#rep_party<-concern_cases%>%filter(WINNER=="Trump")
+
+#ggplot(dem_party, aes(Date, Cases))+ 
+  #geom_point(aes(alpha=dem))
+
+```
+
+DONT FORGET TO COMPLETE
+To visualize these values in a better way we'll add them to the US map:
+```{r, message=FALSE}
+#libraries for plotting map
+library(maps)
+library(usdata)
+us_states <- map_data("state")
+
+#This data will help us plot the map
+#let's check it
+head(us_states)
+
+#the region column here is the state, let's be consistent and rename it
+names(us_states)[names(us_states) == "region"] <- "State"
+
+#This df contains the state and the region it belongs to
+#excluding the territories because they're irrelevant in our analysis
+state_region<-cases1%>%
+  select(State, Region)%>%
+  filter(Region!="Territories")
+
+state_region<-unique(state_region[c("State", "Region")])
+
+glimpse(state_region)
+
+
+#Converting the abbreviation to the full state name and creating a new 
+#column for it
+state_region<-state_region%>%mutate(STATE=abbr2state(state_region$State))
+
+#turning the states name to lower case to use them in joining 
+state_region$STATE <- tolower(state_region$STATE)
+
+#check the data
+glimpse(state_region)
+
+
+#we'll combine the two dfs above by the state
+us_plot_data<-inner_join(us_states,state_region, by = c("State" = "STATE"))
+
+#Now we'll combine it with the cases
+merge(us_plot_data, cases1)
+
+glimpse(us_plot_data)
+
+p <- ggplot(data = us_plot_data,
+            mapping = aes(x = long, y = lat,
+                          group = group, fill=Region, color=State))
+
+p + geom_polygon(color = "black")
+
+```
+
+## Part 2: 
+
+```{r, message=FALSE, error=FALSE, results=FALSE, warning=FALSE, comment=FALSE}
+### importing required librarys
+library(tidyverse)
+library(tidytext)
+library(tidymodels)
+library(textrecipes)
+library(glue)
+library(robotstxt)
+library(rvest)
+library(magrittr)
+library(lubridate)
+
+```
+
+
+
+```{r}
+ ### covid concern dataset
+concern<- concern %>% 
+  rename_with(str_to_title) # making a title name for all columns
+
+head(concern)
+```
+
+
+```{r}
+
+### trump tweets dataset
+trump <- readRDS("~/Project/clean_data/trump.rds")
+
+#Tidying the date column, separating date and time
+#and creating an individual column for each
+#converting the date from `character` to `date`
+trump <-separate(trump, date, c("Date", "Time"), sep = " ") %>% 
+  mutate(Date=as.Date(Date))
+
+
+#Preparing the regrex expressions for the data cleaning
+rgrs_symbols <- "@\\w+|https?://.+|\\d+\\w*\\d*|#\\w+|[^\x01-\x7F]|[[:punct:]]|rt|"
+
+rgrs_spaces <- "\n|^\\s+|\\s+$|[ |\t]+"
+
+replace_rgrs <- paste(rgrs_symbols,rgrs_spaces,collapse = NULL)
+
+#Converting the text to small letter for the analysis
+#Cleaning the data of spaces, new lines, mentions, unnecessary characters.. using regrex expressions
+#Using a unified name for the Covid 19 and all its various spellings
+trump_clean_text <- trump %>%
+  
+  mutate(text=tolower(text)) %>%
+  
+  mutate(text = str_replace_all(text, replace_rgrs, " "))%>%
+  
+  mutate(
+    text = str_replace_all(text, "COVID-19", "COVID_19"),
+    text = str_replace_all(text, "COVID 19", "COVID_19"),
+    text = str_replace_all(text, "Covid-19", "COVID_19"),
+    text = str_replace_all(text, "Covid 19", "COVID_19")
+  )
+
+
+head(trump_clean_text)
+
+```
+```{r}
+# making tokens from the tweet text column
+#2gram tokenize 
+#dropping stopwords - unusful for our analysis 
+tokenized_trump<-trump_clean_text %>%
+  
+  unnest_tokens(word, text, token = "ngrams", n = 2, n_min = 1) %>%
+  
+  anti_join(stop_words, by = "word")
+
+head(tokenized_trump)
+
+```
+
+
+```{r}
+
+## plots and summarise for the tweet text dataset after (text analysis)
+# taking sample from trump ngrams
+trump_ngrams <- tokenized_trump %>%
+  group_by(Date,word) %>%
+  summarise(n = n(), .groups = "drop") %>% # word frequency
+  arrange(desc(n)) %>% # arrange the words frequency in decending order
+  rowid_to_column(var = "index") %>% # adding index column
+  filter(word!='trump') %>% # no need for the word trump 
+  filter(index<=5000) # sample of the dataset
+
+head(trump_ngrams)
+
+```
+
+```{r}
+# adding the sentiment column for the dataset
+trump_bing_word_count<-trump_ngrams %>%
+  inner_join(get_sentiments("bing"), by = "word") %>%
+  arrange(index)
+head(trump_bing_word_count)
+```
+
+
+```{r}
+# plot showing the the word frequency with partition of sentiment
+trump_bing_word_count %>%
+  group_by(sentiment) %>%
+  slice_max(n,n=10) %>%
+  ungroup() %>%
+  mutate(word=reorder(word, n)) %>%
+  ggplot(aes(n,reorder(word,-n),fill=sentiment),stat="identity") +
+  geom_col(show.legend=FALSE) +
+  facet_wrap(~sentiment,scales="free_y") +
+  labs(x="contribution to sentiment", y=NULL)
+  
+```
+
+
+```{r}
+# converting the value of the frequency based on sentiment(negative, positive)
+
+trump_bing_word_count <- trump_bing_word_count %>%
+mutate(n = if_else(sentiment == 'negative', -n, n))
+
+head(trump_bing_word_count)
+```
+
+```{r}
+# df a summarize over the dataset with partition of sentiment, the total count of each group
+
+# df a summarize over the dataset over each date, the total count of each group, the value reflects the prevalent sentiment in each date. this dataset we will use it for the model.
+
+
+df<-trump_bing_word_count %>%
+  group_by(sentiment)%>%
+  summarise(total_count = sum(n))
+head(df)
+
+
+df1<-trump_bing_word_count %>%
+  group_by(Date) %>%
+  summarise(total_count=sum(n))
+head(df1)
+
+```
+
+
+```{r}
+# the joined data(cases dataset and the dataset that we made in the previous chunk(df1))
+my_df<-df1%>%
+  inner_join(concern, by = "Date")
+head(my_df)
+
+```
+
+
+
+```{r}
+
+### creating the model
+# creating my linear model and specify the predicor
+my_model <- linear_reg() %>%
+  set_engine("lm") %>%
+  fit(Diff ~ total_count, data=my_df) %>%
+  tidy()
+
+my_model
+```
+
+```{r}
+# correlation between sentiment and the concern
+cor(my_df$total_count, my_df$Diff)
+```
+
+```{r}
+set.seed(206549784)
+split <- initial_split(my_df, prop=3/4) 
+train_df <- training(split)
+test_df	<- testing(split)
+
+
+my_lgm<- linear_reg() %>%  set_engine("lm") # linear regression Model specification
+
+```
+
+```{r}
+# making recipe for my my model
+my_recipe <- recipe(Diff~.,data = train_df) %>%
+  step_date(Date) %>%
+  step_rm(Dem, Rep) %>% # make dummy variables 
+step_zv(all_predictors())
+
+```
+
+
+```{r}
+# fitting the train data to the model
+my_wflow <- workflow() %>%
+  add_model(my_lgm) %>%
+  add_recipe(my_recipe)
+
+fit<- my_wflow %>%  fit(data = train_df) 
+fit_df<- fit %>%
+  tidy()
+
+head(fit_df)
+```
+
+
+```{r}
+# train predict
+my_train_predict <- predict(fit, train_df) %>%
+  bind_cols(train_df %>% select(Diff, Date))
+my_train_predict<-my_train_predict %>%
+  rename(predicted=.pred)
+
+head(my_train_predict)
+
+```
+
+
+```{r}
+# test predict
+my_test_predict <- predict(fit, test_df) %>%  
+  bind_cols(test_df %>% select(Diff, Date))
+my_test_predict<-my_test_predict %>%
+  rename(predicted=.pred)
+
+head(my_test_predict)
+
+```
+
+
+```{r}
+rsq_test<-rsq(my_test_predict, truth = Diff, estimate = predicted)
+rmse_test<-rmse(my_test_predict, truth = Diff, estimate = predicted)
+
+```
+
+
+```{r}
+
+### rsq of the test
+rsq_test
+
+```
+
+
+```{r}
+### rmse of the test
+rmse_test
+
+```
+
+```{r}
+### plot that shows the the efficient of the model on the train data
+my_test_predict %>%
+  ggplot() +
+  geom_point(aes(predicted, Diff))+
+  geom_smooth(aes(predicted, Diff), method="lm", se=FALSE, color="lightgrey") +
+  labs(x="Acutal", y="Fitted (predicted)", title="Regression model", subtitle="using trumps tweets to predict the us nation concern for COVID 19") +
+  theme_bw()
+```
+
+
+```{r}
+### plot that shows the the efficient of the model on the test data
+my_test_predict %>%
+  ggplot() +
+  geom_point(aes(predicted, Diff))+
+  geom_smooth(aes(predicted, Diff), method="lm", se=FALSE, color="lightgrey") +
+  labs(x="Acutal", y="Fitted (predicted)", title="Regression model", subtitle="using trumps tweets to predict the us nation concern for COVID 19") +
+  theme_bw()
+```
+
+
+```{r}
+### plot that shows the error of the model in the train prediction
+
+my_train_predict %>% 
+  mutate(error=Diff-predicted) %>%
+  ggplot(aes(x=Date, y=error)) +
+  geom_line() +
+  geom_point() +
+  labs(x="Date", y="Error", title="Error of the model", subtitle = "model for predection covid concern")
+
+```
+
+```{r}
+### plot that shows the error of the model in the test prediction
+
+my_test_predict %>% 
+  mutate(error=Diff-predicted) %>%
+  ggplot(aes(x=Date, y=error)) +
+  geom_line() +
+  geom_point() +
+  labs(x="Date", y="Error", title="Error of the model", subtitle = "model for predection covid concern")
+
+```
+
+
+
+## Part 3: Political Orientation, Covid Mobility Restrictions and Covid Cases in the US
+
+As we have seen in the Concern dataset exploration above, the democratic party voters are more concerned about a Covid outbreak than the republican voters, so political orientation in the US plays a role in how people react to the Corona pandemic.
+
+Based on that, we would like to know how the political orientation in the US plays a role when it comes to adhering the Covid 19 mobility restrictions, and how that affects the number of cases in each state, for us to find out we need the right data, we did an extensive research collecting the required data, it was time consuming but worth it, we collected several datasets.
+
+One dataset is for the 2016 US election results in every state -`red_blue.csv`.
+Elections in the US occur every 4 years and the Corona pandemic started to take place in the US during January 2020, we needed data about each state and the winning party in it democratic or republican, we found such tabular data [here](https://indzara.com/2016/11/2016-u-s-presidential-election-tracker-excel-template/), but after validating the data we noticed that it was not updated, these were not the final results of the elections, but because we were comfortable with the ready tabular form and did not find anything like it (others required scraping and tidying), we decided to update the data from [this](https://www.politico.com/2016-election/results/map/president/) validated source, this way it would be less time consuming than scraping and tidying the data from the other sources. 
+
+It is worth mentioning (for those who have a weak background in the topic), that during the 2016 elections the democratic party candidate was Hilary Clinton, and the republican party candidate was Donald Trump, in the elections dataset under the column `WINNER` is stated the winning party's candidate name. 
+Simply put, `Trump` means the republican party won the state, and `Clinton` means that the democrats did. 
+
+Now after gathering data about the political orientation, let's look at the following visualization to get an idea about the cases in the blue states (democratic/Clinton) and the red states (republican/Trump).
+
+```{r}
+#Importing the election results dataset
+Election1<-read.csv("data/red_blue.csv")
+Election1<-Election1%>%rename(State=ABBR)
+
+#Take a look at the data after importing it
+glimpse(Election1)
+
+#col name correction
+Election1<-Election1%>%rename(STATE=ן..STATE)
+
+#saveRDS(Election1, file = "clean_data/Election1.rds")
+
+#Joining the elections dataset with the cases dataset by state
+#And some processing depending on what we saw from the glimpse, changing column names etc..
+elec_cases<-cases1%>%inner_join(Election1,by="State")
+elec_cases<-elec_cases%>%rename(ABBR=State)
+
+#Take a look at the result
+glimpse(elec_cases)
+
+#Grouping by winner (party) and date 
+#Keeping only 2020 data 
+elec_cases1<-elec_cases%>%
+  
+  group_by(Date,WINNER)%>%
+  
+  summarise(cases=sum(Cases))%>%
+  
+  filter(between(Date,ymd("2020-01-21"),ymd("2020-12-31")))
+
+
+#Take a look at the result
+head(elec_cases1)
+ 
+#Plotting
+parties_plt<-ggplot(elec_cases1,aes(Date ,cases,color=WINNER))+
+  
+  geom_line(size=1, alpha=0.68)+
+
+  scale_x_date(date_breaks = "1 month", date_labels = "%m")+
+  
+  scale_y_continuous(labels= scales::comma,breaks = seq(from = 0, to = 200000, by = 25000))+
+  
+  scale_color_manual(labels=c("Democratic", "Republican"), values =c("Blue", "red"))+
+  
+  labs(title="Daily Covid Cases Among Republican VS Democratic States", subtitle = "During 2020", x="Month", y="Cases", color="States Party")+
+  
+  theme_hc()
+
+parties_plt
+  
+```
+
+
+It is expected to have a rise in both lines, what's interesting is starting from June until the end of the year, the republican states have higher numbers of cases than the democratic states. Let's further explore the data.
+
+
+We gathered [data](https://www.washingtonpost.com/nation/interactive/2021/coronavirus-timeline/) about mobility restrictions and events in the US during 2020, restrictions such as lockdowns, stay-at-home orders etc...
+Each restriction or event related to mobility has a date, we'll add those the plot and we'll distinguish between strict restrictions vs facilitated, and see how the cases were affected by that, the distinction will be done by text analysis.
+
+```{r}
+
+#From the data source we picked events related to mobility only 
+#(for example events related to masks were not included)
+event_date<-c("2020-03-16", "2020-03-23", "2020-04-02", "2020-04-11", "2020-04-17", "2020-04-24", "2020-04-30", "2020-05-01", "2020-05-19", "2020-05-25", "2020-05-31", "2020-06-26", "2020-07-08", "2020-08-01", "2020-08-07", "2020-10-02", "2020-11-03")
+
+event_date<-event_date%>%ymd()
+
+event<-c("Trump tells Americans to avoid gathering in groups of more than 10 and to stop eating in restaurants and taking nonessential trips for the next 15 days. It is the closest the federal government will come to calling for a nationwide shutdown.","Under pressure from conservatives, Trump says he’s considering nixing the guidelines for social distancing he announced a week earlier, saying: “We cannot let the cure be worse than the problem itself.",
+         "Most Americans are living under stay-at-home orders.",
+         "The U.S. coronavirus death toll is the highest in the world, passing Italy.",
+         "Trump tweets “LIBERATE MINNESOTA,” “LIBERATE MICHIGAN” and “LIBERATE VIRGINIA,” encouraging protesters who are ignoring social distancing guidance and demanding that their states reopen. Shutdown opposition is spreading, aided by Trump and right-wing groups.",
+         "Georgia Gov. Brian Kemp, a Republican and one of the last leaders to issue a stay-at-home order, allows business to reopen. Georgia is the first state to do so.",
+         " The federal government’s social distancing guidelines expire, and most states push ahead with reopening plans.",
+         "From Michigan to California, gun rights supporters, anti-vaccination activists and business owners protest coronavirus restrictions. Some are heavily armed, some are displaying hate symbols.",
+         " Forty-three states have begun at least some form of reopening, hoping to boost their economies. Seven never had stay-at-home orders.",
+         "Crowded beaches, parties and pools during Memorial Day weekend alarm health officials. One calls the scene an “international example of bad judgment.",
+         "Millions flood streets across the country to protest the killing of George Floyd and police violence against Black Americans, sparking fears of a new round of virus outbreaks. Health officials will later say that the protests, which continue for days, probably did not cause a spike in cases.",
+         "The governors of Texas and Florida reverse course and shut down bars in their states as infections and hospitalizations soar.",
+         "Trump pressures the CDC to change guidance on school reopening and threatens to cut funding for schools that do not fully open for in-person learning.",
+         "A superintendent of schools in rural Arizona issues one of many warnings from educators thinking about reopening schools: “I’m sorry, but it’s a fantasy. Kids will get sick, or worse. Family members will die. Teachers will die.",
+         " Nearly 500,000 people converge on Sturgis, S.D., for a 10-day motorcycle rally. Attendees gather in bars, restaurants and tattoo parlors. The virus spreads, and there are additional outbreaks in the Midwest.",
+         "Trump says he and first lady Melania Trump have tested positive for the virus. Less than 24 hours later, he is flown to a hospital for treatment.",
+         "It is Election Day, and many Americans already have cast their ballots in a record-setting, pandemic-spurred wave of early voting.")
+
+#The restrictions/events df
+restriction<-data.frame(event_date, event)
+
+#saveRDS(restriction, file = "clean_data/restriction.rds")
+#check it out
+
+head(restriction)
+
+```
+Let's perform text analysis to the events, to see which events are facilitating mobility restriction and which are restricting.
+
+```{r}
+#First, Tokenizing
+tokenized_rest<-restriction %>%
+  
+  unnest_tokens(word, event, token = "ngrams", n = 2, n_min = 1) %>%
+  
+  anti_join(stop_words, by = "word")
+
+#Word Frequency
+restr_ngrams <- tokenized_rest %>%
+  
+  group_by(event_date,word) %>%
+  
+  summarise(n = n(), .groups = "drop") %>% 
+  #Arrange the words frequency in descending order
+  arrange(desc(n)) 
+  
+
+head(restr_ngrams)
+
+#Sentiment Analysis
+ Sentiment_count<-restr_ngrams%>%
+   
+  inner_join(get_sentiments("bing"), by = "word") %>%
+   
+  group_by(event_date, sentiment) %>%
+   
+   summarise(n=n())
+
+ #In this df the negative words received a negative count value
+ #this is because, we'll combine the negative and positive count
+ #for each date, and based on the result we'll determine if the event was
+ #restrictive or facilitating
+ sentiment_count <- Sentiment_count %>%
+   
+mutate(n = if_else(sentiment == 'negative', -n, n))
+ 
+head(sentiment_count)
+ 
+#f refers to facialiting 
+restriction_sent<-sentiment_count %>%
+  
+  group_by(event_date) %>%
+  
+  summarise(total_count=sum(n))%>%
+  
+  mutate(event_type = if_else(total_count >=0, "f", "r"))
+
+restriction_sent
+
+
+rest_sent_event<-inner_join(restriction_sent, restriction)
+
+glimpse(rest_sent_event)
+
+```
+After validating the data, it appears that this text analysis model did not determine very well the event type ,this is due to many factors, one is the not very convenient word lexicon for the Covid context, so we'll simply update the final df with the validated event_type:
+```{r}
+
+rest_sent_event<-rest_sent_event%>%mutate(event_type=c("r", "f", "r", "f", "f", "f", "f", "f", "f", "f", "r", "f","r", "f", "r"))
+
+```
+
+
+Let's add those events to the previous plot, and specify by color the event type, mobility facilitating or restricting:
+```{r}
+#glimpse(elec_cases1)
+#Becase color in segment by event_state made several problems
+#this is an alternative solution to color=event_type
+fac<-rest_sent_event%>%filter(event_type=="f")
+rest<-rest_sent_event%>%filter(event_type=="r")
+
+parties_plt+
+  geom_segment(data = fac, aes(x = event_date, y = 200000, xend = event_date, yend =0), colour="black") +
+  
+  geom_segment(data = rest, aes(x = event_date, y = 200000, xend = event_date, yend =0), colour="grey64") +
+  
+  geom_text(data = fac , aes(x = event_date, y = 175000, label = event_type), color = "black", size=5)+
+
+ geom_text(data = rest , aes(x = event_date, y = 175000, label = event_type), color = "grey46", size=5)
+ 
+
+```
+
+Now that we know the type of events, we can guess new conclusions about the data, as we can see around June there were many facilitated mobility events,  and from there on we note a rise in the number of cases in the republican states, while in the democratic states it barely rises, it is almost steady, then comes a restricting mobility event around July also from there on the rise continues in the republican states while remains almost steady in the democratic ones, could it be that citizens in the republican state are less adhere to the restrictions? and are the democrats more adhere? 
+To find out more about that we needed a new dataset-`state_visits_Travel & Transport.csv`, which is taken from [here](https://data.world/covid-19-data/foursquare-mobility-data-during-covid-19), it provides mobility and travels data for every state in the given time period (2020). 
+
+Let's import it and check it out:
+```{r}
+
+mobility<-read.csv("data/state_visits_Travel & Transport.csv")
+
+head(mobility)
+
+```
+As we can see the data needs cleaning, manipulating and pivoting.
+Let's do so:
+```{r}
+#Pivot longer
+pivoted_mobility<-mobility %>%
+  
+  pivot_longer(!NAME, names_to = "date", values_to = "visits")
+
+glimpse(pivoted_mobility)
+
+```
+
+```{r}
+#Manupilating
+pivoted_mobility<-pivoted_mobility%>%rename(STATE=NAME)
+glimpse(pivoted_mobility)
+
+#Joining the elections results df with mobility data for the analysis
+mobi_elec<-pivoted_mobility%>%inner_join(Election1,by="STATE")
+mobi_elec
+
+#cleaning
+mobi_elec$date <- gsub("X", "", mobi_elec$date)
+
+#tidying
+mobi_elec<-mobi_elec%>%mutate(date=date%>%ymd())
+
+#dealing with null values in accordance to the context
+mobi_elec<-mobi_elec[!(is.na(mobi_elec$visits) | mobi_elec$visits=="" | mobi_elec$visits==0), ]
+
+head(mobi_elec)
+#saveRDS(mobi_elec, file = "clean_data/mobi_elec.rds")
+
+#Grouping by date and party
+mobi_grouped<-mobi_elec%>%
+  
+  group_by(date,WINNER)%>%
+  
+  summarise(visits=sum(visits))
+
+
+head(mobi_grouped)
+```
+
+
+Now let's see in the following plot the visits and mobility/traveling data in the republican and the democratic states, in accordance with the mobility restrictions events.
+```{r}
+#Plotting
+visits_plt<-ggplot(mobi_grouped,aes(date ,visits,color=WINNER))+
+  
+  geom_point(size=1.7, alpha=0.5)+
+  
+  geom_smooth(size=0.5, alpha=0.5)+
+
+  scale_x_date(date_breaks = "1 month", date_labels = "%m")+
+  
+  scale_y_continuous(labels= scales::comma)+
+  
+  scale_color_manual(labels=c("Democratic", "Republican"), values =c("Blue", "red"))+
+  
+  labs(title="Traveling And Daily Visits in Republican VS Democratic States", subtitle = "During 2020", x="Month", y="Visits", color="States Party")+
+  
+  theme_hc()
+
+visits_plt
+
+```
+
+We can see that there is an obvious difference in the number of visits between the republican and the democratic states, at the beginning of the year we can say that they have similar data, but as time goes by we can cleary see that the republican tops the democratic.
+Let's add the events to see which party was more responsive to the restrictions 
+
+```{r, warning=FALSE, message=FALSE}
+visits_plt+
+  geom_segment(data = fac, aes(x = event_date, y = 7000000, xend = event_date, yend =0), colour="black") +
+  
+  geom_segment(data = rest, aes(x = event_date, y = 7000000, xend = event_date, yend =0), colour="grey64") +
+  
+  geom_text(data = fac , aes(x = event_date, y = 1000000, label = event_type), color = "black", size=5)+
+
+ geom_text(data = rest , aes(x = event_date, y = 1000000, label = event_type), color = "grey46", size=5)+ 
+  
+  #scaling x to fit the range in the 2 plotting datasets
+   scale_x_date(date_breaks = "1 month", 
+                 labels=date_format("%m"),limits = as.Date(c('2020-02-01','2020-07-20')))
+```
+
+Now after adding the events, let's see how the number of visits changes for every party as time goes by and different types of mobility events occur.
+
+As we see both party's visits decline as the outbreak continues, and have the same pattern, however, the republican has higher numbers than the democratic, we won't decide by this that republicans are less adherent because it could be that the population in the republican states outnumbers the population in the democratic states and so it would surely mean they have more visits, if the data was normalized, meaning we take into consideration the population and the republican was still above the democratic, then yes we could say that. 
+
+But since we lack important data about the population we can't say much, especially that the lines for both parties behave similarly for the different events.
+Sadly after unsuccessful findings in extensive research for a good population estimation dataset for the blue and red states in every month in 2020, we'll have to try another way to shape a better conclusion.
+
+Let's check another visualization that might help in the conclusion:
+```{r}
+
+#Joining the cases and visits dfs
+visits_cases<-inner_join(mobi_grouped, elec_cases1, by=c("date"="Date"))
+ 
+glimpse(visits_cases)
+
+ggplot(visits_cases, aes(x=visits, y=cases, color=WINNER.x))+
+ 
+  geom_point(size=1.7, alpha=0.5)+
+
+  scale_x_discrete()+
+  
+  scale_y_continuous(labels= scales::comma)+
+  
+  scale_color_manual(labels=c("Democratic", "Republican"), values =c("Blue", "red"))+
+  
+  labs(title="Covid Cases And Number Of Visits", subtitle = "During 2020 In Republican Vs Democratic States", x="Visits", y="Cases", color="States Party")+
+  
+  theme_hc()
+```
+
+There's no clear connection between the two variables, also nothing interesting to note between the two parties.
